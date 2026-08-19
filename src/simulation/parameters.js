@@ -24,6 +24,10 @@ export function createParameters() {
     vortexStrength: uniform(1.4),
 
     dragEnabled: uniform(1.0),
-    dragCoefficient: uniform(0.12)
+    dragCoefficient: uniform(0.12),
+
+    // RENDER-ONLY (cosmetic, not part of the force simulation) -------------
+    flapSpeed: uniform(9.0),
+    flapAmplitude: uniform(0.6)
   };
 }

@@ -22,7 +22,10 @@ import { createLabPanel } from './ui/labPanel.js';
 2^24: 16777216
 */
 
-const PARTICLE_COUNT = 131072; //2^17. Increase only after measuring performance.
+// Each instance now renders a full bat mesh (~28k vertices), not a plane
+// sprite, so the count drops sharply from the original 131072. Raise it
+// only after measuring performance.
+const PARTICLE_COUNT = 220;
 
 async function main() {
   const mount = document.querySelector('#app');
@@ -50,7 +53,7 @@ async function main() {
   orbit.target.set(0, 0, 0);
 
   const params = createParameters();
-  const simulation = createSimulation({ renderer, scene, params, count: PARTICLE_COUNT });
+  const simulation = await createSimulation({ renderer, scene, params, count: PARTICLE_COUNT });
 
   // LAB HELPERS -----------------------------------------------------------
   const attractorHelper = new THREE.Mesh(

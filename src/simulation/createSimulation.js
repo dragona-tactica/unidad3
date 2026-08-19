@@ -2,21 +2,32 @@ import * as THREE from 'three/webgpu';
 import {
   Fn,
   If,
-  color,
+  attribute,
+  cos,
+  cross,
   hash,
   instanceIndex,
   instancedArray,
   max,
-  mix,
   mod,
-  step,
+  normalize,
+  positionLocal,
+  sign,
+  sin,
+  texture,
+  time,
   uint,
   uv,
-  vec3,
-  vec4
+  vec3
 } from 'three/tsl';
+import { loadBatGeometry } from './loadBatGeometry.js';
 
-export function createSimulation({ renderer, scene, params, count = 131072 }) {
+const BAT_MODEL_URL = './models/bat_animation_fly.glb';
+// Normalized model has bounding-sphere radius 1; this puts a bat at a
+// visible scale relative to boundsSize (10) once multiplied by particleSize.
+const BAT_VISUAL_SCALE = 12.0;
+
+export async function createSimulation({ renderer, scene, params, count = 131072 }) {
   // STATE -----------------------------------------------------------------
   // Each particle owns position and velocity. The arrays live in GPU storage.
   const positionBuffer = instancedArray(count, 'vec3');
@@ -89,28 +100,55 @@ export function createSimulation({ renderer, scene, params, count = 131072 }) {
 
   // RENDER ---------------------------------------------------------------
   // Rendering does not recompute the physics. It consumes the GPU state.
-  const material = new THREE.SpriteNodeMaterial({
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    transparent: true
-  });
+  // The bat mesh replaces the plain sprite, but position still comes only
+  // from positionBuffer/velocityBuffer: state -> forces -> integration ->
+  // render stays intact. Wing flap and orientation are cosmetic, GPU-side,
+  // vertex-shader effects layered on top of that same state.
+  const { geometry, texture: batTexture } = await loadBatGeometry(BAT_MODEL_URL);
 
-  material.positionNode = positionBuffer.toAttribute();
-  material.scaleNode = params.particleSize;
+  // Shared across both materials (body+wing+hair and eyes) so every
+  // instance/vertex is placed identically regardless of material group.
+  const positionNode = Fn(() => {
+    const i = instanceIndex;
+    const center = positionBuffer.element(i);
+    const v = velocityBuffer.element(i);
 
-  material.colorNode = Fn(() => {
-    const speed = velocityBuffer.toAttribute().length();
-    const t = speed.div(params.maxSpeed).clamp(0.0, 1.0);
-    const slow = color('#46a6ff');
-    const fast = color('#ffb35a');
-    return vec4(mix(slow, fast, t), 1.0);
+    const local = positionLocal.mul(params.particleSize).mul(BAT_VISUAL_SCALE);
+    const isWing = attribute('aWing');
+
+    // Cosmetic wing flap: a per-instance phased sine, mirrored by wing side.
+    const phase = hash(i.add(uint(211))).mul(6.28318);
+    const flapAngle = sin(time.mul(params.flapSpeed).add(phase)).mul(params.flapAmplitude).mul(isWing);
+    const side = sign(local.x);
+    const angle = flapAngle.mul(side);
+    const ca = cos(angle);
+    const sa = sin(angle);
+    const flapped = vec3(
+      local.x,
+      local.y.mul(ca).sub(local.z.mul(sa)),
+      local.y.mul(sa).add(local.z.mul(ca))
+    );
+
+    // Orient the bat to face its velocity direction.
+    const forward = v.div(max(v.length(), 0.0001));
+    const worldUp = vec3(0.0, 1.0, 0.0001);
+    const right = normalize(cross(worldUp, forward));
+    const up = cross(forward, right);
+    const oriented = right.mul(flapped.x).add(up.mul(flapped.y)).add(forward.mul(flapped.z));
+
+    return center.add(oriented);
   })();
 
-  // Circular sprite mask, avoiding visible square planes.
-  material.opacityNode = step(uv().xy.sub(0.5).length(), 0.5);
+  const bodyMaterial = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+  bodyMaterial.positionNode = positionNode;
+  if (batTexture) {
+    bodyMaterial.colorNode = texture(batTexture, uv());
+  }
 
-  const geometry = new THREE.PlaneGeometry(1, 1);
-  const mesh = new THREE.InstancedMesh(geometry, material, count);
+  const eyesMaterial = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, color: '#050505' });
+  eyesMaterial.positionNode = positionNode;
+
+  const mesh = new THREE.InstancedMesh(geometry, [bodyMaterial, eyesMaterial], count);
   mesh.frustumCulled = false;
   scene.add(mesh);
 
@@ -124,7 +162,8 @@ export function createSimulation({ renderer, scene, params, count = 131072 }) {
 
   function dispose() {
     geometry.dispose();
-    material.dispose();
+    bodyMaterial.dispose();
+    eyesMaterial.dispose();
     scene.remove(mesh);
   }
 
