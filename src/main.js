@@ -8,9 +8,9 @@ import { createSimulation } from './simulation/createSimulation.js';
 import { MOMENTS } from './simulation/moments.js';
 import { createLabPanel } from './ui/labPanel.js';
 
-// Simple sprites again (not the bat mesh), so this can run a much larger
-// swarm than the bat-instrument experiment.
-const PARTICLE_COUNT = 24000;
+// Bumped for Apple Silicon (M-series) — raise further if the frame rate
+// holds up on the target machine, lower if it doesn't.
+const PARTICLE_COUNT = 80000;
 
 async function main() {
   const mount = document.querySelector('#app');
@@ -106,12 +106,14 @@ async function main() {
 
   const hud = document.createElement('div');
   hud.className = 'hud';
-  hud.innerHTML = '<span id="hints"><strong>LAB</strong> · P: performance · R: reset · 1-6: momentos · espacio: impulso</span><br><span id="momentLabel"></span>';
+  hud.innerHTML = '<span id="hints"><strong>LAB</strong> · P: performance · R: reset · 1-7: momentos · espacio: impulso</span><br><span id="momentLabel"></span>';
   document.body.append(hud);
   setMode('LAB');
   applyMoment(MOMENTS[0].id);
 
-  // KEY MAPPING: the digits mirror the song's own moment numbering (1-6). --
+  // KEY MAPPING: digits follow performance order (the intro is split into
+  // two cues — planet, then eruption — so there are 7 keys for 6 song
+  // sections). --------------------------------------------------------
   addEventListener('keydown', (event) => {
     if (event.repeat) return;
     if (event.code === 'KeyP') setMode(mode === 'LAB' ? 'PERFORMANCE' : 'LAB');

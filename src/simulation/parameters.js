@@ -24,6 +24,7 @@ export function createParameters() {
     dispersion: uniform(boot.dispersion),
     turbulence: uniform(boot.turbulence),
     ring: uniform(boot.ring),
+    ringSpacing: uniform(boot.ringSpacing),
     bat: uniform(boot.bat),
     damping: uniform(boot.damping),
     birthRate: uniform(boot.birthRate),

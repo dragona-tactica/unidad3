@@ -40,8 +40,11 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
   const targetBuffer = storage(new THREE.StorageBufferAttribute(targetData, 3), 'vec3', count);
 
   // INITIALIZATION ----------------------------------------------------------
-  // Everyone starts dead; the "intro" moment's birthRate brings the core to
-  // life, so pressing reset genuinely reads as a birth, not a re-shuffle.
+  // Everyone starts alive so the scene shows the current moment immediately
+  // on load/reset, without needing pointer movement or a birthRate ramp-up
+  // to become visible. The birth/death mechanic itself still exists for
+  // moments that use it live (drop, outro) — it just doesn't gate the very
+  // first frame.
   const initParticles = Fn(() => {
     const i = instanceIndex;
     const p = positionBuffer.element(i);
@@ -54,7 +57,7 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
 
     p.assign(vec3(r1, r2, r3).sub(0.5).mul(0.6));
     v.assign(vec3(0.0));
-    age.assign(1.0);
+    age.assign(0.0);
   })().compute(count).setName('Initialize Particles');
 
   // UPDATE / COMPUTE SHADER ------------------------------------------------
@@ -109,7 +112,7 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
     const radius = max(p0.length(), 0.001);
     const radialDir = p0.div(radius);
     const ringLevel = hash(i.add(uint(97))).mul(3.0).floor().add(1.0);
-    const targetRadius = ringLevel.mul(1.6);
+    const targetRadius = ringLevel.mul(params.ringSpacing);
     force.addAssign(radialDir.mul(targetRadius.sub(radius)).mul(params.ring).mul(2.5));
     const tangent = vec3(0.0, 0.0, 1.0).cross(radialDir);
     force.addAssign(tangent.mul(params.ring).mul(3.0));

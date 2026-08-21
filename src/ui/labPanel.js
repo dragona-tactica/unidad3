@@ -61,7 +61,8 @@ export function createLabPanel({ params, moments, onReset, onMoment, onModeChang
     ['centerAttraction', 'Atracción al centro', 0, 1.5, 0.01],
     ['dispersion', 'Dispersión', 0, 1.5, 0.01],
     ['turbulence', 'Turbulencia', 0, 1.5, 0.01],
-    ['ring', 'Anillos', 0, 1.5, 0.01],
+    ['ring', 'Anillos / capa', 0, 1.5, 0.01],
+    ['ringSpacing', 'Radio del anillo', 0.1, 2.0, 0.01],
     ['bat', 'Formación murciélago', 0, 1.5, 0.01],
     ['maxSpeed', 'Velocidad máxima', 0.1, 10, 0.1],
     ['damping', 'Damping / fricción', 0, 1, 0.01],
@@ -82,7 +83,7 @@ export function createLabPanel({ params, moments, onReset, onMoment, onModeChang
   actions.className = 'group';
   actions.innerHTML = '<h2>Acciones</h2>';
   panel.append(actions);
-  button(actions, 'Reset (nacimiento desde cero)', null, onReset);
+  button(actions, 'Reset (reiniciar posiciones)', null, onReset);
   button(actions, 'Pausar / continuar', null, () => onPauseChange());
   button(actions, 'LAB / PERFORMANCE', null, () => onModeChange());
 
