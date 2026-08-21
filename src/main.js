@@ -73,6 +73,16 @@ async function main() {
   let panel;
   let currentMoment = MOMENTS[0].id;
 
+  // Hold-to-attract / hold-to-repel: while the key is down, this fully
+  // overrides the current moment's own centerAttraction/dispersion with a
+  // strong value; releasing it restores whatever the moment last set.
+  // Only the value at the moment the key goes down is saved, so a moment
+  // switch that happens mid-hold is respected once the key comes back up.
+  const ATTRACT_HOLD_STRENGTH = 1.8;
+  const REPEL_HOLD_STRENGTH = 1.8;
+  let savedCenterAttraction = null;
+  let savedDispersion = null;
+
   // Applying a moment only sets target values once, right now — nothing
   // here runs on a timer, so the system never changes state on its own.
   const applyMoment = (id) => {
@@ -109,7 +119,7 @@ async function main() {
 
   const hud = document.createElement('div');
   hud.className = 'hud';
-  hud.innerHTML = '<span id="hints"><strong>LAB</strong> · P: performance · R: reset · 1-6: momentos · espacio: impulso</span><br><span id="momentLabel"></span>';
+  hud.innerHTML = '<span id="hints"><strong>LAB</strong> · P: performance · R: reset · 1-6: momentos · espacio: impulso · A: atraer · D: repeler · B: latido</span><br><span id="momentLabel"></span>';
   document.body.append(hud);
   setMode('LAB');
   applyMoment(MOMENTS[0].id);
@@ -126,6 +136,35 @@ async function main() {
     if (event.code === 'Space') {
       event.preventDefault();
       params.impulse.value = 1.0;
+    }
+
+    // Tap this on the beat to make the system palpitate.
+    if (event.code === 'KeyB') params.pulse.value = 1.0;
+
+    // Hold to attract / hold to repel — a live override on top of
+    // whatever the current moment already set.
+    if (event.code === 'KeyA') {
+      savedCenterAttraction = params.centerAttraction.value;
+      params.centerAttraction.value = ATTRACT_HOLD_STRENGTH;
+      panel?.refresh();
+    }
+    if (event.code === 'KeyD') {
+      savedDispersion = params.dispersion.value;
+      params.dispersion.value = REPEL_HOLD_STRENGTH;
+      panel?.refresh();
+    }
+  });
+
+  addEventListener('keyup', (event) => {
+    if (event.code === 'KeyA' && savedCenterAttraction !== null) {
+      params.centerAttraction.value = savedCenterAttraction;
+      savedCenterAttraction = null;
+      panel?.refresh();
+    }
+    if (event.code === 'KeyD' && savedDispersion !== null) {
+      params.dispersion.value = savedDispersion;
+      savedDispersion = null;
+      panel?.refresh();
     }
   });
 
@@ -145,9 +184,12 @@ async function main() {
     lastTime = now;
 
     params.frame.value += 1;
-    // The impulse is a one-shot "hit"; it decays here so a moment's own
-    // parameters never drift on their own between keypresses.
+    // The impulse and pulse are one-shot "hits"; they decay here so a
+    // moment's own parameters never drift on their own between keypresses.
     params.impulse.value = Math.max(0, params.impulse.value - frameDt * 2.5);
+    // Faster decay than impulse — a snappy heartbeat, safe to tap on every
+    // beat without hits piling up on top of each other.
+    params.pulse.value = Math.max(0, params.pulse.value - frameDt * 4.5);
 
     if (!paused) simulation.stepSimulation();
     orbit.update();

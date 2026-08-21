@@ -169,6 +169,12 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
     const impulseDir = normalize(p0.sub(params.attractor).add(vec3(0.0001, 0.0, 0.0)));
     force.addAssign(impulseDir.mul(params.impulse).mul(10.0));
 
+    // 10) PULSE: manual "heartbeat" (B key) — a much gentler outward kick
+    // than the impulse, safe to tap repeatedly on the beat. The visible
+    // part of the palpitation (particle size/brightness swell) lives in
+    // the render material below.
+    force.addAssign(impulseDir.mul(params.pulse).mul(2.5));
+
     // INTEGRATION -----------------------------------------------------
     const rawVel = v0.add(force.mul(dt));
     const speed = rawVel.length();
@@ -212,7 +218,8 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
   });
 
   material.positionNode = positionBuffer.toAttribute();
-  material.scaleNode = params.particleSize;
+  // The "heartbeat" (pulse) swells particle size on top of its base value.
+  material.scaleNode = params.particleSize.mul(params.pulse.mul(0.6).add(1.0));
 
   const lifeAlpha = Fn(() => {
     const age = ageBuffer.toAttribute();
@@ -221,10 +228,11 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
     return select(isDead, 0.0, dyingFade);
   })();
 
-  // Per-moment cold -> mid -> hot gradient, driven by particle speed.
+  // Per-moment cold -> mid -> hot gradient, driven by particle speed; the
+  // heartbeat pulse also nudges everything a little brighter/hotter.
   material.colorNode = Fn(() => {
     const speed = velocityBuffer.toAttribute().length();
-    const t = speed.div(params.maxSpeed).clamp(0.0, 1.0);
+    const t = speed.div(params.maxSpeed).clamp(0.0, 1.0).add(params.pulse.mul(0.3)).clamp(0.0, 1.0);
     const lowHalf = mix(params.colorCold, params.colorMid, t.mul(2.0).clamp(0.0, 1.0));
     const highHalf = mix(params.colorMid, params.colorHot, t.sub(0.5).mul(2.0).clamp(0.0, 1.0));
     return vec4(mix(lowHalf, highHalf, step(0.5, t)), 1.0);

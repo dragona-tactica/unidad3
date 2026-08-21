@@ -59,6 +59,12 @@ export function createParameters() {
     // One-shot manual "hit" (space bar), decayed from JS each frame.
     impulse: uniform(0.0),
 
+    // One-shot manual "heartbeat" (B key), decayed from JS each frame —
+    // tap it on the beat to make the whole system palpitate. Swells
+    // particleSize/brightness and gives a gentle outward kick, gentler
+    // than the space-bar impulse so it's safe to tap repeatedly.
+    pulse: uniform(0.0),
+
     // Advances every frame in the render loop; used as a changing seed so
     // the birth/death roll isn't the same result forever for a given index.
     frame: uniform(0.0)
