@@ -129,7 +129,7 @@ async function main() {
 
   const hud = document.createElement('div');
   hud.className = 'hud';
-  hud.innerHTML = '<span id="hints"><strong>LAB</strong> · P: performance · R: reset · 1-6: momentos · espacio: impulso · A: atraer · D: repeler · B: latido</span><br><span id="momentLabel"></span>';
+  hud.innerHTML = '<span id="hints"><strong>LAB</strong> · P: performance · R: reset · 1-6: momentos · espacio: impulso · A: atraer · D: repeler · B: vibrar (arena en altavoz)</span><br><span id="momentLabel"></span>';
   document.body.append(hud);
   setMode('LAB');
   applyMoment(MOMENTS[0].id);
@@ -148,7 +148,8 @@ async function main() {
       params.impulse.value = 1.0;
     }
 
-    // Tap this on the beat to make the system palpitate.
+    // Tap on the beat: sand-on-a-speaker vibration for up to 1.5s (see
+    // the pulse force in createSimulation.js).
     if (event.code === 'KeyB') params.pulse.value = 1.0;
 
     // Hold to attract / hold to repel — a live override on top of
@@ -197,10 +198,10 @@ async function main() {
     // The impulse and pulse are one-shot "hits"; they decay here so a
     // moment's own parameters never drift on their own between keypresses.
     params.impulse.value = Math.max(0, params.impulse.value - frameDt * 2.5);
-    // Fast decay — a dry, snappy heartbeat (expand then contract, see the
-    // pulse force in createSimulation.js), safe to tap on every beat
-    // without hits piling up on top of each other.
-    params.pulse.value = Math.max(0, params.pulse.value - frameDt * 7.0);
+    // Pulse is a plain envelope for the "sand on a speaker" vibration in
+    // createSimulation.js — linear decay to 0 over exactly 1.5s, so a tap
+    // never rings on longer than that regardless of how fast it's re-tapped.
+    params.pulse.value = Math.max(0, params.pulse.value - frameDt / 1.5);
 
     if (!paused) simulation.stepSimulation();
     orbit.update();
