@@ -39,6 +39,8 @@ async function main() {
   const orbit = new OrbitControls(camera, renderer.domElement);
   orbit.enableDamping = true;
   orbit.target.set(0, 0, 0);
+  orbit.minDistance = 1.5;
+  orbit.maxDistance = 40;
 
   const params = createParameters();
   const simulation = await createSimulation({ renderer, scene, params, count: PARTICLE_COUNT });
@@ -87,6 +89,12 @@ async function main() {
   let savedCenterAttraction = null;
   let savedDispersion = null;
 
+  // Hold to zoom the camera in/out. Routed through OrbitControls' own
+  // dollyIn/dollyOut so it stays consistent with mouse-wheel zoom and
+  // respects orbit.minDistance/maxDistance instead of fighting the
+  // controls' per-frame update().
+  const zoomHeld = { in: false, out: false };
+
   // Applying a moment only sets target values once, right now — nothing
   // here runs on a timer, so the system never changes state on its own.
   const applyMoment = (id) => {
@@ -129,7 +137,7 @@ async function main() {
 
   const hud = document.createElement('div');
   hud.className = 'hud';
-  hud.innerHTML = '<span id="hints"><strong>LAB</strong> · P: performance · R: reset · 1-6: momentos · espacio: impulso · A: atraer · D: repeler · B: vibrar (arena en altavoz)</span><br><span id="momentLabel"></span>';
+  hud.innerHTML = '<span id="hints"><strong>LAB</strong> · P: performance · R: reset · 1-6: momentos · espacio: impulso · A: atraer · D: repeler · B: vibrar (arena en altavoz) · +/-: zoom</span><br><span id="momentLabel"></span>';
   document.body.append(hud);
   setMode('LAB');
   applyMoment(MOMENTS[0].id);
@@ -164,6 +172,10 @@ async function main() {
       params.dispersion.value = REPEL_HOLD_STRENGTH;
       panel?.refresh();
     }
+
+    // Hold to zoom the camera in (Equal/"+") or out (Minus/"-").
+    if (event.code === 'Equal') zoomHeld.in = true;
+    if (event.code === 'Minus') zoomHeld.out = true;
   });
 
   addEventListener('keyup', (event) => {
@@ -177,6 +189,8 @@ async function main() {
       savedDispersion = null;
       panel?.refresh();
     }
+    if (event.code === 'Equal') zoomHeld.in = false;
+    if (event.code === 'Minus') zoomHeld.out = false;
   });
 
   addEventListener('resize', () => {
@@ -202,6 +216,15 @@ async function main() {
     // createSimulation.js — linear decay to 0 over exactly 1.5s, so a tap
     // never rings on longer than that regardless of how fast it's re-tapped.
     params.pulse.value = Math.max(0, params.pulse.value - frameDt / 1.5);
+
+    // Smooth, frame-rate-independent zoom while +/- is held, via the
+    // controls' own dolly so it merges cleanly with orbit.update() below.
+    // Note: in this three.js build dollyOut() is the one that shrinks the
+    // distance (zooms in) and dollyIn() grows it (zooms out) — verified
+    // empirically, opposite of what the names suggest.
+    const dollyScale = Math.pow(3, frameDt);
+    if (zoomHeld.in) orbit.dollyOut(dollyScale);
+    if (zoomHeld.out) orbit.dollyIn(dollyScale);
 
     if (!paused) simulation.stepSimulation();
     orbit.update();
