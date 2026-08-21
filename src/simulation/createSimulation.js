@@ -1,156 +1,209 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn,
-  If,
-  attribute,
-  cos,
-  cross,
+  color,
+  greaterThanEqual,
   hash,
   instanceIndex,
   instancedArray,
   max,
-  mod,
+  mix,
+  mx_fractal_noise_vec3,
   normalize,
-  positionLocal,
-  sign,
-  sin,
-  texture,
+  oneMinus,
+  positionGeometry,
+  select,
+  smoothstep,
+  step,
+  storage,
   time,
   uint,
   uv,
-  vec3
+  vec3,
+  vec4
 } from 'three/tsl';
-import { loadBatGeometry } from './loadBatGeometry.js';
+import { sampleBatTargets } from './sampleBatTargets.js';
 
-const BAT_MODEL_URL = './models/bat_animation_fly.glb';
-// Normalized model has bounding-sphere radius 1; this puts a bat at a
-// visible scale relative to boundsSize (10) once multiplied by particleSize.
-const BAT_VISUAL_SCALE = 12.0;
-
-export async function createSimulation({ renderer, scene, params, count = 131072 }) {
+// state -> forces -> integration -> render, same mental model as the
+// forces lab, but the "state" now includes an age per particle so moments
+// can spawn (birthRate) and dissipate (lifetimeRate) a population instead
+// of only pushing a fixed set of particles around.
+export async function createSimulation({ renderer, scene, params, count = 20000 }) {
   // STATE -----------------------------------------------------------------
-  // Each particle owns position and velocity. The arrays live in GPU storage.
   const positionBuffer = instancedArray(count, 'vec3');
   const velocityBuffer = instancedArray(count, 'vec3');
+  const ageBuffer = instancedArray(count, 'float'); // 0 = just born, >=1 = dead
 
-  // INITIALIZATION --------------------------------------------------------
-  // A compute pass writes the initial state for every particle in parallel.
+  // Precomputed target point (on the bat silhouette) each particle is
+  // pulled toward when the "bat" formation parameter is active.
+  const targetData = await sampleBatTargets(count);
+  const targetBuffer = storage(new THREE.StorageBufferAttribute(targetData, 3), 'vec3', count);
+
+  // INITIALIZATION ----------------------------------------------------------
+  // Everyone starts dead; the "intro" moment's birthRate brings the core to
+  // life, so pressing reset genuinely reads as a birth, not a re-shuffle.
   const initParticles = Fn(() => {
     const i = instanceIndex;
     const p = positionBuffer.element(i);
     const v = velocityBuffer.element(i);
+    const age = ageBuffer.element(i);
 
     const r1 = hash(i.add(uint(11)));
     const r2 = hash(i.add(uint(23)));
     const r3 = hash(i.add(uint(37)));
-    const r4 = hash(i.add(uint(53)));
-    const r5 = hash(i.add(uint(71)));
-    const r6 = hash(i.add(uint(89)));
 
-    p.assign(vec3(r1, r2, r3).sub(0.5).mul(params.boundsSize.mul(0.45)));
-    v.assign(vec3(r4, r5, r6).sub(0.5).mul(params.initialSpeed));
+    p.assign(vec3(r1, r2, r3).sub(0.5).mul(0.6));
+    v.assign(vec3(0.0));
+    age.assign(1.0);
   })().compute(count).setName('Initialize Particles');
 
-  // UPDATE / COMPUTE SHADER ----------------------------------------------
-  // This is the conceptual heart of the project:
-  // state -> forces -> acceleration -> velocity -> position.
+  // UPDATE / COMPUTE SHADER ------------------------------------------------
+  // Written branchless (select() instead of If/Else): every particle
+  // computes both the "reborn" and "alive" candidate next-states, then
+  // one unconditional assign picks the right one.
   const updateParticles = Fn(() => {
-    const p = positionBuffer.element(instanceIndex);
-    const v = velocityBuffer.element(instanceIndex);
+    const i = instanceIndex;
+    const p0 = positionBuffer.element(i);
+    const v0 = velocityBuffer.element(i);
+    const age0 = ageBuffer.element(i);
+    const target = targetBuffer.element(i);
 
-    const dt = params.dt.mul(params.timeScale);
+    const dt = params.frameDt.mul(params.timeScale);
+    const wasDead = age0.greaterThanEqual(1.0);
+
+    // BIRTH CANDIDATE: only some dead particles reroll successfully each
+    // frame, so birthRate reads as "how fast the population fills in".
+    const seed = uint(params.frame).mul(uint(2654435761)).add(i.mul(uint(2246822519))).add(uint(1));
+    const roll = hash(seed);
+    const reborn = wasDead.and(roll.lessThan(params.birthRate.mul(dt)));
+
+    const r1 = hash(seed.add(uint(17)));
+    const r2 = hash(seed.add(uint(29)));
+    const r3 = hash(seed.add(uint(41)));
+    const rv1 = hash(seed.add(uint(53)));
+    const rv2 = hash(seed.add(uint(59)));
+    const rv3 = hash(seed.add(uint(61)));
+    const bornPos = params.attractor.add(vec3(r1, r2, r3).sub(0.5).mul(0.6));
+    const bornVel = vec3(rv1, rv2, rv3).sub(0.5).mul(0.4);
+
+    // ALIVE CANDIDATE: forces + integration, computed from the pre-frame
+    // snapshot. Harmless to compute even for dead particles — it's simply
+    // discarded by the final select() below.
     const force = vec3(0.0).toVar();
 
-    // 1) CONSTANT / WIND FORCE
-    force.addAssign(params.wind.mul(params.windEnabled));
+    // 1) CENTER ATTRACTION: pull toward the interactive attractor.
+    const toAttractor = params.attractor.sub(p0);
+    const distAttractor = max(toAttractor.length(), 0.25);
+    force.addAssign(toAttractor.div(distAttractor).mul(params.centerAttraction).mul(6.0));
 
-    // 2) RADIAL FORCE (positive = attraction, negative = repulsion)
-    const toAttractor = params.attractor.sub(p);
-    const distance = max(toAttractor.length(), params.softening);
-    const radialDirection = toAttractor.div(distance);
-    const radialForce = radialDirection
-      .mul(params.radialStrength)
-      .div(distance.pow(2))
-      .mul(params.radialEnabled);
-    force.addAssign(radialForce);
+    // 2) DISPERSION: push away from the world origin.
+    const distCenter = max(p0.length(), 0.25);
+    force.addAssign(p0.div(distCenter).mul(params.dispersion).mul(6.0));
 
-    // 3) VORTEX FORCE: tangent to the radial direction around Z.
-    const zAxis = vec3(0.0, 0.0, 1.0);
-    const tangent = zAxis.cross(radialDirection);
-    force.addAssign(tangent.mul(params.vortexStrength).mul(params.vortexEnabled));
+    // 3) TURBULENCE: chaotic noise field, drifting over time.
+    const noiseCoord = p0.mul(0.5).add(vec3(0.0, 0.0, time.mul(0.6)));
+    force.addAssign(mx_fractal_noise_vec3(noiseCoord).mul(params.turbulence).mul(8.0));
 
-    // 4) LINEAR DRAG: F = -c v
-    force.addAssign(v.mul(params.dragCoefficient).mul(params.dragEnabled).mul(-1.0));
+    // 4) RING FORMATION: settle onto one of a few concentric radii, with
+    // a tangential push so it reads as an orbit, not just a shell.
+    const radius = max(p0.length(), 0.001);
+    const radialDir = p0.div(radius);
+    const ringLevel = hash(i.add(uint(97))).mul(3.0).floor().add(1.0);
+    const targetRadius = ringLevel.mul(1.6);
+    force.addAssign(radialDir.mul(targetRadius.sub(radius)).mul(params.ring).mul(2.5));
+    const tangent = vec3(0.0, 0.0, 1.0).cross(radialDir);
+    force.addAssign(tangent.mul(params.ring).mul(3.0));
 
-    // INTEGRATION ---------------------------------------------------------
-    // Unit mass: a = F. Semi-implicit Euler: update v, then p.
-    v.addAssign(force.mul(dt));
+    // 5) BAT FORMATION: converge on the assigned silhouette point.
+    force.addAssign(target.sub(p0).mul(params.bat).mul(4.0));
 
-    const speed = v.length();
-    If(speed.greaterThan(params.maxSpeed), () => {
-      v.assign(v.normalize().mul(params.maxSpeed));
-    });
+    // 6) DAMPING (friction): F = -c v
+    force.addAssign(v0.mul(params.damping).mul(-1.0));
 
-    p.addAssign(v.mul(dt));
+    // 7) IMPULSE: manual outward "hit", set from JS on keydown and
+    // decayed from JS every frame afterward.
+    const impulseDir = normalize(p0.sub(params.attractor).add(vec3(0.0001, 0.0, 0.0)));
+    force.addAssign(impulseDir.mul(params.impulse).mul(10.0));
 
-    // Periodic boundary conditions: particles leaving one side re-enter.
-    const half = params.boundsSize.mul(0.5);
-    p.assign(mod(p.add(half), params.boundsSize).sub(half));
+    // INTEGRATION -----------------------------------------------------
+    const rawVel = v0.add(force.mul(dt));
+    const speed = rawVel.length();
+    const cappedVel = select(speed.greaterThan(params.maxSpeed), rawVel.normalize().mul(params.maxSpeed), rawVel);
+    const rawPos = p0.add(cappedVel.mul(dt));
+
+    // Soft containment: nudge back instead of teleporting, so it never
+    // breaks a ring or bat formation with a visible jump.
+    const distFromOrigin = rawPos.length();
+    const boundary = params.boundsSize.mul(0.5);
+    const overshoot = max(distFromOrigin.sub(boundary), 0.0);
+    const containedVel = cappedVel.sub(rawPos.normalize().mul(overshoot).mul(4.0).mul(dt));
+
+    const aliveAge = age0.add(params.lifetimeRate.mul(dt));
+
+    // FINAL SELECT: reborn > still-dead (frozen) > alive-updated. -------
+    const nextPos = select(reborn, bornPos, select(wasDead, p0, rawPos));
+    const nextVel = select(reborn, bornVel, select(wasDead, v0, containedVel));
+    const nextAge = select(reborn, 0.0, select(wasDead, age0, aliveAge));
+
+    positionBuffer.element(i).assign(nextPos);
+    velocityBuffer.element(i).assign(nextVel);
+    ageBuffer.element(i).assign(nextAge);
   })().compute(count).setName('Update Particles');
 
-  // RENDER ---------------------------------------------------------------
-  // Rendering does not recompute the physics. It consumes the GPU state.
-  // The bat mesh replaces the plain sprite, but position still comes only
-  // from positionBuffer/velocityBuffer: state -> forces -> integration ->
-  // render stays intact. Wing flap and orientation are cosmetic, GPU-side,
-  // vertex-shader effects layered on top of that same state.
-  const { geometry, texture: batTexture } = await loadBatGeometry(BAT_MODEL_URL);
+  // RENDER ------------------------------------------------------------------
+  // Placeholder look (color/shape) — swap once the performance aesthetics
+  // per moment are defined; the mechanics above don't depend on it.
+  const material = new THREE.SpriteNodeMaterial({
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: false,
+    transparent: true
+  });
 
-  // Shared across both materials (body+wing+hair and eyes) so every
-  // instance/vertex is placed identically regardless of material group.
-  const positionNode = Fn(() => {
-    const i = instanceIndex;
-    const center = positionBuffer.element(i);
-    const v = velocityBuffer.element(i);
+  material.positionNode = positionBuffer.toAttribute();
+  material.scaleNode = params.particleSize;
 
-    const local = positionLocal.mul(params.particleSize).mul(BAT_VISUAL_SCALE);
-    const isWing = attribute('aWing');
-
-    // Cosmetic wing flap: a per-instance phased sine, mirrored by wing side.
-    const phase = hash(i.add(uint(211))).mul(6.28318);
-    const flapAngle = sin(time.mul(params.flapSpeed).add(phase)).mul(params.flapAmplitude).mul(isWing);
-    const side = sign(local.x);
-    const angle = flapAngle.mul(side);
-    const ca = cos(angle);
-    const sa = sin(angle);
-    const flapped = vec3(
-      local.x,
-      local.y.mul(ca).sub(local.z.mul(sa)),
-      local.y.mul(sa).add(local.z.mul(ca))
-    );
-
-    // Orient the bat to face its velocity direction.
-    const forward = v.div(max(v.length(), 0.0001));
-    const worldUp = vec3(0.0, 1.0, 0.0001);
-    const right = normalize(cross(worldUp, forward));
-    const up = cross(forward, right);
-    const oriented = right.mul(flapped.x).add(up.mul(flapped.y)).add(forward.mul(flapped.z));
-
-    return center.add(oriented);
+  const lifeAlpha = Fn(() => {
+    const age = ageBuffer.toAttribute();
+    const isDead = greaterThanEqual(age, 1.0);
+    const dyingFade = oneMinus(smoothstep(0.75, 1.0, age));
+    return select(isDead, 0.0, dyingFade);
   })();
 
-  const bodyMaterial = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-  bodyMaterial.positionNode = positionNode;
-  if (batTexture) {
-    bodyMaterial.colorNode = texture(batTexture, uv());
-  }
+  material.colorNode = Fn(() => {
+    const speed = velocityBuffer.toAttribute().length();
+    const t = speed.div(params.maxSpeed).clamp(0.0, 1.0);
+    const slow = color('#3ea0ff');
+    const fast = color('#ffffff');
+    return vec4(mix(slow, fast, t), 1.0);
+  })();
 
-  const eyesMaterial = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, color: '#050505' });
-  eyesMaterial.positionNode = positionNode;
+  const circularMask = step(uv().xy.sub(0.5).length(), 0.5);
+  material.opacityNode = circularMask.mul(lifeAlpha).mul(params.opacity);
 
-  const mesh = new THREE.InstancedMesh(geometry, [bodyMaterial, eyesMaterial], count);
+  const geometry = new THREE.PlaneGeometry(1, 1);
+  const mesh = new THREE.InstancedMesh(geometry, material, count);
   mesh.frustumCulled = false;
+  mesh.renderOrder = 1;
   scene.add(mesh);
+
+  // TRAIL PASS ---------------------------------------------------------------
+  // A camera-independent full-screen quad, drawn first each frame without
+  // clearing, that fades the previous frame toward black. trail=0 behaves
+  // like a normal clear; trail=1 never fades (infinite trail).
+  const trailMaterial = new THREE.MeshBasicNodeMaterial();
+  trailMaterial.transparent = true;
+  trailMaterial.depthWrite = false;
+  trailMaterial.depthTest = false;
+  // vertexNode replaces the whole vertex stage (bypassing the camera's
+  // model-view-projection), which is what makes this quad screen-space.
+  trailMaterial.vertexNode = Fn(() => vec4(positionGeometry.xy, 0.0, 1.0))();
+  trailMaterial.colorNode = vec4(0.0, 0.0, 0.0, oneMinus(params.trail));
+
+  const trailQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), trailMaterial);
+  trailQuad.frustumCulled = false;
+  trailQuad.renderOrder = -1;
+  scene.add(trailQuad);
 
   function reset() {
     renderer.compute(initParticles);
@@ -162,15 +215,18 @@ export async function createSimulation({ renderer, scene, params, count = 131072
 
   function dispose() {
     geometry.dispose();
-    bodyMaterial.dispose();
-    eyesMaterial.dispose();
+    material.dispose();
     scene.remove(mesh);
+    trailQuad.geometry.dispose();
+    trailMaterial.dispose();
+    scene.remove(trailQuad);
   }
 
   return {
     count,
     positionBuffer,
     velocityBuffer,
+    ageBuffer,
     reset,
     stepSimulation,
     dispose

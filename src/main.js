@@ -5,27 +5,12 @@ import './styles.css';
 
 import { createParameters } from './simulation/parameters.js';
 import { createSimulation } from './simulation/createSimulation.js';
+import { MOMENTS } from './simulation/moments.js';
 import { createLabPanel } from './ui/labPanel.js';
 
-
-
-/*
-2^15: 32768
-2^16: 65536
-2^17: 131072
-2^18: 262144
-2^19: 524288
-2^20: 1048576
-2^21: 2097152
-2^22: 4194304
-2^23: 8388608
-2^24: 16777216
-*/
-
-// Each instance now renders a full bat mesh (~28k vertices), not a plane
-// sprite, so the count drops sharply from the original 131072. Raise it
-// only after measuring performance.
-const PARTICLE_COUNT = 220;
+// Simple sprites again (not the bat mesh), so this can run a much larger
+// swarm than the bat-instrument experiment.
+const PARTICLE_COUNT = 24000;
 
 async function main() {
   const mount = document.querySelector('#app');
@@ -45,6 +30,9 @@ async function main() {
   const renderer = new THREE.WebGPURenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
+  // The trail pass paints its own fade quad every frame instead of a hard
+  // clear, so the renderer must not clear the color buffer on its own.
+  renderer.autoClear = false;
   mount.appendChild(renderer.domElement);
   await renderer.init();
 
@@ -65,7 +53,6 @@ async function main() {
   scene.add(axes);
 
   // POINTER -> WORLD POSITION --------------------------------------------
-  // This is a useful camera concept: screen coordinates are not world coords.
   const pointerNdc = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
@@ -84,38 +71,19 @@ async function main() {
   let paused = false;
   let mode = 'LAB';
   let panel;
-  let savedRadialStrength = params.radialStrength.value;
-  let savedRadialEnabled = params.radialEnabled.value;
+  let currentMoment = MOMENTS[0].id;
 
-  const applyPreset = (id) => {
-    params.windEnabled.value = 0;
-    params.radialEnabled.value = 0;
-    params.vortexEnabled.value = 0;
-    params.dragEnabled.value = 0;
-    params.wind.value.set(0, 0, 0);
-    params.initialSpeed.value = 0;
-
-    if (id === 'inertia') {
-      params.initialSpeed.value = 0.8;
-    } else if (id === 'wind') {
-      params.windEnabled.value = 1;
-      params.wind.value.set(1.5, 0, 0);
-    } else if (id === 'attract') {
-      params.radialEnabled.value = 1;
-      params.radialStrength.value = 3.0;
-    } else if (id === 'repel') {
-      params.radialEnabled.value = 1;
-      params.radialStrength.value = -3.0;
-    } else if (id === 'vortex') {
-      params.radialEnabled.value = 1;
-      params.radialStrength.value = 1.0;
-      params.vortexEnabled.value = 1;
-      params.vortexStrength.value = 3.0;
-      params.dragEnabled.value = 1;
-      params.dragCoefficient.value = 0.08;
+  // Applying a moment only sets target values once, right now — nothing
+  // here runs on a timer, so the system never changes state on its own.
+  const applyMoment = (id) => {
+    const moment = MOMENTS.find((m) => m.id === id);
+    if (!moment) return;
+    currentMoment = id;
+    for (const [key, value] of Object.entries(moment.params)) {
+      params[key].value = value;
     }
-    simulation.reset();
     panel?.refresh();
+    hud.querySelector('#momentLabel').textContent = `${moment.label} (${moment.range})`;
   };
 
   const setMode = (next) => {
@@ -124,54 +92,37 @@ async function main() {
     panel.setVisible(lab);
     axes.visible = lab;
     attractorHelper.visible = lab;
-    //orbit.enabled = lab;
-    hud.innerHTML = lab
-      ? '<strong>LAB</strong> · P: performance · R: reset · 1–5: pruebas'
-      //: '<strong>PERFORMANCE</strong> · P: lab · espacio: invertir radial · puntero: atractor';
-      : '';
+    hud.querySelector('#hints').style.display = lab ? '' : 'none';
   };
 
   panel = createLabPanel({
     params,
+    moments: MOMENTS,
     onReset: () => simulation.reset(),
-    onPreset: applyPreset,
+    onMoment: applyMoment,
     onModeChange: () => setMode(mode === 'LAB' ? 'PERFORMANCE' : 'LAB'),
-    onPauseChange: () => paused = !paused
+    onPauseChange: () => (paused = !paused)
   });
 
   const hud = document.createElement('div');
   hud.className = 'hud';
+  hud.innerHTML = '<span id="hints"><strong>LAB</strong> · P: performance · R: reset · 1-6: momentos · espacio: impulso</span><br><span id="momentLabel"></span>';
   document.body.append(hud);
   setMode('LAB');
+  applyMoment(MOMENTS[0].id);
 
-  // BASELINE LIVE INSTRUMENT MAPPING -------------------------------------
-  // Students are expected to redesign this mapping for their own instrument.
+  // KEY MAPPING: the digits mirror the song's own moment numbering (1-6). --
   addEventListener('keydown', (event) => {
-    //console.log('radial inverted', params.radialStrength.value);
     if (event.repeat) return;
     if (event.code === 'KeyP') setMode(mode === 'LAB' ? 'PERFORMANCE' : 'LAB');
     if (event.code === 'KeyR') simulation.reset();
-    if (event.code === 'Digit1') applyPreset('inertia');
-    if (event.code === 'Digit2') applyPreset('wind');
-    if (event.code === 'Digit3') applyPreset('attract');
-    if (event.code === 'Digit4') applyPreset('repel');
-    if (event.code === 'Digit5') applyPreset('vortex');
+
+    const moment = MOMENTS.find((m) => m.key === event.code);
+    if (moment) applyMoment(moment.id);
 
     if (event.code === 'Space') {
       event.preventDefault();
-      //savedRadialStrength = params.radialStrength.value || 2.0;
-      savedRadialStrength = params.radialStrength.value;
-      savedRadialEnabled = params.radialEnabled.value;
-      params.radialEnabled.value = 1;
-      params.radialStrength.value = -(savedRadialStrength || 2.0);
-      //console.log('radial inverted', params.radialStrength.value);
-    }
-  });
-
-  addEventListener('keyup', (event) => {
-    if (event.code === 'Space') {
-      params.radialEnabled.value = savedRadialEnabled;
-      params.radialStrength.value = savedRadialStrength;
+      params.impulse.value = 1.0;
     }
   });
 
@@ -184,7 +135,17 @@ async function main() {
   simulation.reset();
 
   // FRAME LOOP ------------------------------------------------------------
+  let lastTime = performance.now();
   renderer.setAnimationLoop(() => {
+    const now = performance.now();
+    const frameDt = Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
+
+    params.frame.value += 1;
+    // The impulse is a one-shot "hit"; it decays here so a moment's own
+    // parameters never drift on their own between keypresses.
+    params.impulse.value = Math.max(0, params.impulse.value - frameDt * 2.5);
+
     if (!paused) simulation.stepSimulation();
     orbit.update();
     renderer.render(scene, camera);
