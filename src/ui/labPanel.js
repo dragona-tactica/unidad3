@@ -63,6 +63,7 @@ export function createLabPanel({ params, moments, onReset, onMoment, onModeChang
     ['turbulence', 'Turbulencia', 0, 1.5, 0.01],
     ['ring', 'Anillos / capa', 0, 1.5, 0.01],
     ['ringSpacing', 'Radio del anillo', 0.1, 2.0, 0.01],
+    ['ringLevels', 'Capas del anillo (1=esfera hueca)', 1, 5, 1],
     ['bat', 'Formación murciélago', 0, 1.5, 0.01],
     ['maxSpeed', 'Velocidad máxima', 0.1, 10, 0.1],
     ['damping', 'Damping / fricción', 0, 1, 0.01],

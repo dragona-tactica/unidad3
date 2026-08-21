@@ -106,11 +106,14 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
     const noiseCoord = p0.mul(0.5).add(vec3(0.0, 0.0, time.mul(0.6)));
     force.addAssign(mx_fractal_noise_vec3(noiseCoord).mul(params.turbulence).mul(8.0));
 
-    // 4) RING FORMATION: settle onto one of a few concentric radii, with
-    // a tangential push so it reads as an orbit, not just a shell.
+    // 4) RING FORMATION: settle onto one of `ringLevels` concentric radii,
+    // with a tangential push so it reads as an orbit, not just a shell.
+    // ringLevels=1 puts every particle on the SAME radius — a clean single
+    // hollow sphere surface (a "particle sphere" like a globe), rather than
+    // several radii stacked into a denser ball.
     const radius = max(p0.length(), 0.001);
     const radialDir = p0.div(radius);
-    const ringLevel = hash(i.add(uint(97))).mul(3.0).floor().add(1.0);
+    const ringLevel = hash(i.add(uint(97))).mul(params.ringLevels).floor().add(1.0);
     const targetRadius = ringLevel.mul(params.ringSpacing);
     force.addAssign(radialDir.mul(targetRadius.sub(radius)).mul(params.ring).mul(2.5));
     const tangent = vec3(0.0, 0.0, 1.0).cross(radialDir);
