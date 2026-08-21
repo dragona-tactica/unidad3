@@ -1,7 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn,
-  color,
   greaterThanEqual,
   hash,
   instanceIndex,
@@ -14,6 +13,7 @@ import {
   positionGeometry,
   select,
   smoothstep,
+  step,
   storage,
   time,
   uint,
@@ -182,12 +182,13 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
     return select(isDead, 0.0, dyingFade);
   })();
 
+  // Per-moment cold -> mid -> hot gradient, driven by particle speed.
   material.colorNode = Fn(() => {
     const speed = velocityBuffer.toAttribute().length();
     const t = speed.div(params.maxSpeed).clamp(0.0, 1.0);
-    const slow = color('#3ea0ff');
-    const fast = color('#ffffff');
-    return vec4(mix(slow, fast, t), 1.0);
+    const lowHalf = mix(params.colorCold, params.colorMid, t.mul(2.0).clamp(0.0, 1.0));
+    const highHalf = mix(params.colorMid, params.colorHot, t.sub(0.5).mul(2.0).clamp(0.0, 1.0));
+    return vec4(mix(lowHalf, highHalf, step(0.5, t)), 1.0);
   })();
 
   // Soft-edged circle; alphaTest above discards the corners/fringe so the

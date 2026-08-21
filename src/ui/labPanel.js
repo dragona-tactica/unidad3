@@ -27,6 +27,23 @@ function rangeRow(parent, label, min, max, step, getValue, onInput) {
   return { refresh: sync };
 }
 
+function colorRow(parent, label, colorUniform) {
+  const wrap = document.createElement('div');
+  wrap.className = 'row';
+  const lab = document.createElement('label');
+  const name = document.createElement('span');
+  name.textContent = label;
+  lab.append(name);
+  const input = document.createElement('input');
+  input.type = 'color';
+  const sync = () => { input.value = `#${colorUniform.value.getHexString()}`; };
+  input.addEventListener('input', () => colorUniform.value.set(input.value));
+  sync();
+  wrap.append(lab, input);
+  parent.append(wrap);
+  return { refresh: sync };
+}
+
 function button(parent, label, note, onClick) {
   const b = document.createElement('button');
   b.textContent = note ? `${label} — ${note}` : label;
@@ -79,6 +96,14 @@ export function createLabPanel({ params, moments, onReset, onMoment, onModeChang
       rangeRow(live, label, min, max, step, () => params[key].value, (v) => (params[key].value = v))
     );
   }
+
+  const colors = document.createElement('div');
+  colors.className = 'group';
+  colors.innerHTML = '<h2>Color (frío → medio → caliente, por velocidad)</h2>';
+  panel.append(colors);
+  refreshers.push(colorRow(colors, 'Frío', params.colorCold));
+  refreshers.push(colorRow(colors, 'Medio', params.colorMid));
+  refreshers.push(colorRow(colors, 'Caliente', params.colorHot));
 
   const actions = document.createElement('div');
   actions.className = 'group';

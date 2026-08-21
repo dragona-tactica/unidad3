@@ -2,9 +2,14 @@
 // every listed parameter to its target value; nothing here runs on a timer.
 // The system only ever changes state because the performer pressed a key
 // or a button. The intro is split into two states (planet / eruption) at
-// the performer's request — both share the "ring" mechanic, just at a
-// different target radius (ringSpacing), so the eruption is literally the
-// planet's shell being told to expand outward into the orbit radius.
+// the performer's request — both share the "ring" mechanic: several
+// concentric radii (ringLevels) packed close together (ringSpacing) so the
+// particles fill a solid-looking ball, not just its outer surface. The
+// eruption is literally the same shell stack told to expand outward to the
+// orbit radius. Colors come from the performer's moment-by-moment mood
+// board (cold/mid/hot mix by speed) — intro and eruption share the
+// "Nucleus" blue family since the reference treats the whole intro as one
+// color beat.
 export const MOMENTS = [
   {
     id: 'intro-planet',
@@ -17,15 +22,18 @@ export const MOMENTS = [
       dispersion: 0.0,
       turbulence: 0.1,
       ring: 1.3,
-      ringSpacing: 1.1,
-      ringLevels: 1,
+      ringSpacing: 0.28,
+      ringLevels: 4,
       bat: 0.0,
       maxSpeed: 1.2,
       damping: 0.5,
       birthRate: 0.15,
       lifetimeRate: 0.0,
-      particleSize: 0.009,
-      trail: 0.1
+      particleSize: 0.016,
+      trail: 0.1,
+      colorCold: '#0a1f4d',
+      colorMid: '#2f6fd6',
+      colorHot: '#7ecbff'
     }
   },
   {
@@ -39,15 +47,18 @@ export const MOMENTS = [
       dispersion: 0.15,
       turbulence: 0.35,
       ring: 1.0,
-      ringSpacing: 1.6,
-      ringLevels: 1,
+      ringSpacing: 0.4,
+      ringLevels: 4,
       bat: 0.0,
       maxSpeed: 2.5,
       damping: 0.15,
       birthRate: 0.2,
       lifetimeRate: 0.0,
-      particleSize: 0.009,
-      trail: 0.3
+      particleSize: 0.016,
+      trail: 0.3,
+      colorCold: '#142a5c',
+      colorMid: '#3b6fe0',
+      colorHot: '#a7dcff'
     }
   },
   {
@@ -69,7 +80,10 @@ export const MOMENTS = [
       birthRate: 0.18,
       lifetimeRate: 0.0,
       particleSize: 0.018,
-      trail: 0.3
+      trail: 0.3,
+      colorCold: '#3b0a5c',
+      colorMid: '#8b2fd6',
+      colorHot: '#e879f9'
     }
   },
   {
@@ -91,7 +105,10 @@ export const MOMENTS = [
       birthRate: 0.35,
       lifetimeRate: 0.0,
       particleSize: 0.02,
-      trail: 0.75
+      trail: 0.75,
+      colorCold: '#7a1a1a',
+      colorMid: '#ff6b35',
+      colorHot: '#ec4899'
     }
   },
   {
@@ -113,7 +130,10 @@ export const MOMENTS = [
       birthRate: 0.03,
       lifetimeRate: 0.0,
       particleSize: 0.016,
-      trail: 0.4
+      trail: 0.4,
+      colorCold: '#0f3d3d',
+      colorMid: '#5eead4',
+      colorHot: '#ccfbf1'
     }
   },
   {
@@ -135,7 +155,10 @@ export const MOMENTS = [
       birthRate: 0.85,
       lifetimeRate: 0.55,
       particleSize: 0.018,
-      trail: 0.55
+      trail: 0.55,
+      colorCold: '#1e3a8a',
+      colorMid: '#f97316',
+      colorHot: '#ffffff'
     }
   },
   {
@@ -157,7 +180,10 @@ export const MOMENTS = [
       birthRate: 0.0,
       lifetimeRate: 0.6,
       particleSize: 0.014,
-      trail: 0.5
+      trail: 0.5,
+      colorCold: '#1a1008',
+      colorMid: '#5c3a1e',
+      colorHot: '#a66c3c'
     }
   }
 ];

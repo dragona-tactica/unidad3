@@ -33,6 +33,11 @@ export function createParameters() {
     trail: uniform(boot.trail),
     opacity: uniform(1.0),
 
+    // Per-moment color gradient (cold -> mid -> hot, driven by speed).
+    colorCold: uniform(new THREE.Color(boot.colorCold)),
+    colorMid: uniform(new THREE.Color(boot.colorMid)),
+    colorHot: uniform(new THREE.Color(boot.colorHot)),
+
     // One-shot manual "hit" (space bar), decayed from JS each frame.
     impulse: uniform(0.0),
 

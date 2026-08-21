@@ -80,7 +80,10 @@ async function main() {
     if (!moment) return;
     currentMoment = id;
     for (const [key, value] of Object.entries(moment.params)) {
-      params[key].value = value;
+      // Color uniforms hold a THREE.Color instance; moments give hex
+      // strings, so update the instance in place rather than overwrite it.
+      if (params[key].value?.isColor) params[key].value.set(value);
+      else params[key].value = value;
     }
     panel?.refresh();
     hud.querySelector('#momentLabel').textContent = `${moment.label} (${moment.range})`;
