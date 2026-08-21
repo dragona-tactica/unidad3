@@ -8,9 +8,9 @@ import { createSimulation } from './simulation/createSimulation.js';
 import { MOMENTS } from './simulation/moments.js';
 import { createLabPanel } from './ui/labPanel.js';
 
-// Quadrupled for Apple Silicon (M-series) headroom — lower this if the
-// frame rate doesn't hold up on the target machine.
-const PARTICLE_COUNT = 320000;
+// Bumped again to fill the screen on Apple Silicon (M-series) — lower this
+// if the frame rate doesn't hold up on the target machine.
+const PARTICLE_COUNT = 1000000;
 
 async function main() {
   const mount = document.querySelector('#app');
@@ -52,13 +52,22 @@ async function main() {
   const axes = new THREE.AxesHelper(1.5);
   scene.add(axes);
 
+  let paused = false;
+  let mode = 'LAB';
+  let panel;
+  let currentMoment = MOMENTS[0].id;
+
   // POINTER -> WORLD POSITION --------------------------------------------
+  // Every moment now has its own fixed attraction point instead of the
+  // pointer — except breakdown (bat), which still follows the pointer
+  // exactly as before, untouched.
   const pointerNdc = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   const hit = new THREE.Vector3();
 
   addEventListener('pointermove', (event) => {
+    if (currentMoment !== 'breakdown') return;
     pointerNdc.x = (event.clientX / innerWidth) * 2 - 1;
     pointerNdc.y = -(event.clientY / innerHeight) * 2 + 1;
     raycaster.setFromCamera(pointerNdc, camera);
@@ -67,11 +76,6 @@ async function main() {
       attractorHelper.position.copy(hit);
     }
   });
-
-  let paused = false;
-  let mode = 'LAB';
-  let panel;
-  let currentMoment = MOMENTS[0].id;
 
   // Hold-to-attract / hold-to-repel: while the key is down, this fully
   // overrides the current moment's own centerAttraction/dispersion with a
@@ -94,6 +98,12 @@ async function main() {
       // strings, so update the instance in place rather than overwrite it.
       if (params[key].value?.isColor) params[key].value.set(value);
       else params[key].value = value;
+    }
+    // Fixed attraction point for every moment except breakdown (bat),
+    // which keeps following the pointer instead — see pointermove above.
+    if (id !== 'breakdown') {
+      params.attractor.value.set(0, 0, 0);
+      attractorHelper.position.set(0, 0, 0);
     }
     panel?.refresh();
     hud.querySelector('#momentLabel').textContent = `${moment.label} (${moment.range})`;
@@ -187,9 +197,10 @@ async function main() {
     // The impulse and pulse are one-shot "hits"; they decay here so a
     // moment's own parameters never drift on their own between keypresses.
     params.impulse.value = Math.max(0, params.impulse.value - frameDt * 2.5);
-    // Faster decay than impulse — a snappy heartbeat, safe to tap on every
-    // beat without hits piling up on top of each other.
-    params.pulse.value = Math.max(0, params.pulse.value - frameDt * 4.5);
+    // Fast decay — a dry, snappy heartbeat (expand then contract, see the
+    // pulse force in createSimulation.js), safe to tap on every beat
+    // without hits piling up on top of each other.
+    params.pulse.value = Math.max(0, params.pulse.value - frameDt * 7.0);
 
     if (!paused) simulation.stepSimulation();
     orbit.update();

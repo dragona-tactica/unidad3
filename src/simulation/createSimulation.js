@@ -169,11 +169,13 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
     const impulseDir = normalize(p0.sub(params.attractor).add(vec3(0.0001, 0.0, 0.0)));
     force.addAssign(impulseDir.mul(params.impulse).mul(10.0));
 
-    // 10) PULSE: manual "heartbeat" (B key) — a much gentler outward kick
-    // than the impulse, safe to tap repeatedly on the beat. The visible
-    // part of the palpitation (particle size/brightness swell) lives in
-    // the render material below.
-    force.addAssign(impulseDir.mul(params.pulse).mul(2.5));
+    // 10) PULSE: manual "heartbeat" (B key) — a sharp two-phase snap, not
+    // a soft kick: as `pulse` decays from 1 to 0, the sign flips partway
+    // through so particles are shoved OUT first, then YANKED back IN —
+    // a dry, fast expand/contract rather than a one-way push. Both halves
+    // scale with the current pulse value, so it's exactly 0 at rest.
+    const pulseSign = select(params.pulse.greaterThan(0.45), 1.0, -1.0);
+    force.addAssign(impulseDir.mul(params.pulse).mul(pulseSign).mul(9.0));
 
     // INTEGRATION -----------------------------------------------------
     const rawVel = v0.add(force.mul(dt));
