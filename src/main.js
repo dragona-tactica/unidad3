@@ -150,6 +150,10 @@ async function main() {
 
     if (!paused) simulation.stepSimulation();
     orbit.update();
+    // Color is cleared by the trail quad (see createSimulation.js), but
+    // depth still needs a real clear each frame — otherwise last frame's
+    // particle depth lingers and can occlude particles that moved closer.
+    renderer.clearDepth();
     renderer.render(scene, camera);
   });
 }

@@ -14,7 +14,6 @@ import {
   positionGeometry,
   select,
   smoothstep,
-  step,
   storage,
   time,
   uint,
@@ -156,11 +155,18 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
   // RENDER ------------------------------------------------------------------
   // Placeholder look (color/shape) — swap once the performance aesthetics
   // per moment are defined; the mechanics above don't depend on it.
+  //
+  // Opaque + depth-tested + alpha-tested (not additive/transparent): with
+  // thousands of particles overlapping in a dense shell, additive blending
+  // sums every overlap toward white and erases the individual points. Depth
+  // testing instead makes particles occlude each other like solid dots, so
+  // a dense cluster reads as a textured, granular sphere — visible discrete
+  // points, not a glowing blob — matching the reference sketch.
   const material = new THREE.SpriteNodeMaterial({
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    depthTest: false,
-    transparent: true
+    depthWrite: true,
+    depthTest: true,
+    transparent: false,
+    alphaTest: 0.5
   });
 
   material.positionNode = positionBuffer.toAttribute();
@@ -181,7 +187,9 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
     return vec4(mix(slow, fast, t), 1.0);
   })();
 
-  const circularMask = step(uv().xy.sub(0.5).length(), 0.5);
+  // Soft-edged circle; alphaTest above discards the corners/fringe so the
+  // depth buffer only ever gets written where a dot is actually visible.
+  const circularMask = oneMinus(smoothstep(0.4, 0.5, uv().xy.sub(0.5).length()));
   material.opacityNode = circularMask.mul(lifeAlpha).mul(params.opacity);
 
   const geometry = new THREE.PlaneGeometry(1, 1);
