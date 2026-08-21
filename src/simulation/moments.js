@@ -1,69 +1,40 @@
 // Manually-triggered states along the song's timeline. Selecting one snaps
 // every listed parameter to its target value; nothing here runs on a timer.
 // The system only ever changes state because the performer pressed a key
-// or a button. The intro is split into two states (planet / eruption) at
-// the performer's request — both share the "ring" mechanic: several
-// concentric radii (ringLevels) packed close together (ringSpacing) so the
-// particles fill a solid-looking ball, not just its outer surface. The
-// eruption is literally the same shell stack told to expand outward to the
-// orbit radius. Colors come from the performer's moment-by-moment mood
-// board (cold/mid/hot mix by speed) — intro and eruption share the
-// "Nucleus" blue family since the reference treats the whole intro as one
-// color beat.
+// or a button. Colors come from the performer's moment-by-moment mood
+// board (cold/mid/hot mix driven by particle speed).
 export const MOMENTS = [
   {
-    id: 'intro-planet',
+    id: 'nucleus',
     key: 'Digit1',
-    label: '1 · Planeta',
-    range: '00:00 – 00:15',
-    note: 'Las partículas se condensan en una esfera densa y compacta.',
+    label: '1 · Núcleo',
+    range: '00:00 – 00:30',
+    note: 'Núcleo turbulento con arcos de campo magnético en bucle — punto de partida de la simulación.',
     params: {
-      centerAttraction: 0.3,
+      centerAttraction: 0.4,
       dispersion: 0.0,
-      turbulence: 0.1,
+      turbulence: 0.5,
       ring: 1.3,
       ringSpacing: 0.28,
       ringLevels: 4,
       bat: 0.0,
-      maxSpeed: 1.2,
-      damping: 0.5,
-      birthRate: 0.15,
+      magnetar: 1.6,
+      magnetarRatio: 0.035,
+      curve: 0.0,
+      maxSpeed: 4.5,
+      damping: 0.3,
+      birthRate: 0.2,
       lifetimeRate: 0.0,
-      particleSize: 0.016,
-      trail: 0.1,
+      particleSize: 0.014,
+      trail: 0.85,
       colorCold: '#0a1f4d',
       colorMid: '#2f6fd6',
       colorHot: '#7ecbff'
     }
   },
   {
-    id: 'intro-eruption',
-    key: 'Digit2',
-    label: '1 · Expulsión a órbita',
-    range: '00:15 – 00:30',
-    note: 'El planeta expulsa partículas hacia su órbita, como un volcán.',
-    params: {
-      centerAttraction: 0.0,
-      dispersion: 0.15,
-      turbulence: 0.35,
-      ring: 1.0,
-      ringSpacing: 0.4,
-      ringLevels: 4,
-      bat: 0.0,
-      maxSpeed: 2.5,
-      damping: 0.15,
-      birthRate: 0.2,
-      lifetimeRate: 0.0,
-      particleSize: 0.016,
-      trail: 0.3,
-      colorCold: '#142a5c',
-      colorMid: '#3b6fe0',
-      colorHot: '#a7dcff'
-    }
-  },
-  {
     id: 'buildup',
-    key: 'Digit3',
+    key: 'Digit2',
     label: '2 · Acumulación',
     range: '00:30 – 01:15',
     note: 'Aceleración y expansión radial, formas tipo vórtice.',
@@ -75,6 +46,9 @@ export const MOMENTS = [
       ringSpacing: 1.6,
       ringLevels: 3,
       bat: 0.0,
+      magnetar: 0.0,
+      magnetarRatio: 0.0,
+      curve: 0.0,
       maxSpeed: 2.0,
       damping: 0.18,
       birthRate: 0.18,
@@ -88,7 +62,7 @@ export const MOMENTS = [
   },
   {
     id: 'climax',
-    key: 'Digit4',
+    key: 'Digit3',
     label: '3 · Primer clímax',
     range: '01:15 – 01:58',
     note: 'Dispersión masiva y caos, anillos concéntricos.',
@@ -100,6 +74,9 @@ export const MOMENTS = [
       ringSpacing: 1.6,
       ringLevels: 3,
       bat: 0.0,
+      magnetar: 0.0,
+      magnetarRatio: 0.0,
+      curve: 0.0,
       maxSpeed: 4.6,
       damping: 0.06,
       birthRate: 0.35,
@@ -113,7 +90,7 @@ export const MOMENTS = [
   },
   {
     id: 'breakdown',
-    key: 'Digit5',
+    key: 'Digit4',
     label: '4 · Breakdown',
     range: '01:58 – 02:15',
     note: 'Agrupación hacia una forma de murciélago, no estática.',
@@ -125,6 +102,9 @@ export const MOMENTS = [
       ringSpacing: 1.6,
       ringLevels: 3,
       bat: 0.9,
+      magnetar: 0.0,
+      magnetarRatio: 0.0,
+      curve: 0.0,
       maxSpeed: 0.55,
       damping: 0.8,
       birthRate: 0.03,
@@ -138,22 +118,25 @@ export const MOMENTS = [
   },
   {
     id: 'drop',
-    key: 'Digit6',
+    key: 'Digit5',
     label: '5 · Drop principal',
     range: '02:15 – 03:45',
-    note: 'Explosión errática: bandada saliendo a cazar al anochecer.',
+    note: 'Banco de partículas nadando en una figura de infinito (8).',
     params: {
-      centerAttraction: 0.05,
-      dispersion: 1.0,
-      turbulence: 1.0,
-      ring: 0.15,
+      centerAttraction: 0.0,
+      dispersion: 0.0,
+      turbulence: 0.15,
+      ring: 0.0,
       ringSpacing: 1.6,
       ringLevels: 3,
       bat: 0.0,
-      maxSpeed: 7.5,
-      damping: 0.04,
-      birthRate: 0.85,
-      lifetimeRate: 0.55,
+      magnetar: 0.0,
+      magnetarRatio: 0.0,
+      curve: 1.4,
+      maxSpeed: 6.0,
+      damping: 0.15,
+      birthRate: 0.3,
+      lifetimeRate: 0.0,
       particleSize: 0.018,
       trail: 0.55,
       colorCold: '#1e3a8a',
@@ -163,7 +146,7 @@ export const MOMENTS = [
   },
   {
     id: 'outro',
-    key: 'Digit7',
+    key: 'Digit6',
     label: '6 · Outro',
     range: '03:45 – 04:43',
     note: 'Disipación: la población envejece y no se repone.',
@@ -175,6 +158,9 @@ export const MOMENTS = [
       ringSpacing: 1.6,
       ringLevels: 3,
       bat: 0.0,
+      magnetar: 0.0,
+      magnetarRatio: 0.0,
+      curve: 0.0,
       maxSpeed: 0.35,
       damping: 0.5,
       birthRate: 0.0,

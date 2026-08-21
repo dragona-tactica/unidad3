@@ -1,6 +1,8 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn,
+  PI,
+  cos,
   greaterThanEqual,
   hash,
   instanceIndex,
@@ -12,6 +14,7 @@ import {
   oneMinus,
   positionGeometry,
   select,
+  sin,
   smoothstep,
   step,
   storage,
@@ -93,10 +96,20 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
     // discarded by the final select() below.
     const force = vec3(0.0).toVar();
 
+    // Splits the population for the "magnetar" moment: a fraction traces
+    // the looping arcs (magnetarRatio), the rest stays in the turbulent
+    // core and keeps using center attraction / turbulence / ring like
+    // every other moment. magnetarRatio is 0 for every other moment, so
+    // isLoopParticle is always false there and this changes nothing for
+    // them. Loop particles get a light touch of turbulence (not zero) so
+    // the arcs still read as organic rather than perfectly rigid curves.
+    const isLoopParticle = hash(i.add(uint(701))).lessThan(params.magnetarRatio);
+    const loopDamp = select(isLoopParticle, 0.15, 1.0);
+
     // 1) CENTER ATTRACTION: pull toward the interactive attractor.
     const toAttractor = params.attractor.sub(p0);
     const distAttractor = max(toAttractor.length(), 0.25);
-    force.addAssign(toAttractor.div(distAttractor).mul(params.centerAttraction).mul(6.0));
+    force.addAssign(toAttractor.div(distAttractor).mul(params.centerAttraction).mul(6.0).mul(loopDamp));
 
     // 2) DISPERSION: push away from the world origin.
     const distCenter = max(p0.length(), 0.25);
@@ -104,28 +117,54 @@ export async function createSimulation({ renderer, scene, params, count = 20000 
 
     // 3) TURBULENCE: chaotic noise field, drifting over time.
     const noiseCoord = p0.mul(0.5).add(vec3(0.0, 0.0, time.mul(0.6)));
-    force.addAssign(mx_fractal_noise_vec3(noiseCoord).mul(params.turbulence).mul(8.0));
+    force.addAssign(mx_fractal_noise_vec3(noiseCoord).mul(params.turbulence).mul(8.0).mul(loopDamp));
 
-    // 4) RING FORMATION: settle onto one of `ringLevels` concentric radii,
-    // with a tangential push so it reads as an orbit, not just a shell.
-    // ringLevels=1 puts every particle on the SAME radius — a clean single
-    // hollow sphere surface (a "particle sphere" like a globe), rather than
-    // several radii stacked into a denser ball.
+    // 4) RING FORMATION (core particles only): settle onto one of
+    // `ringLevels` concentric radii, with a tangential push so it reads as
+    // an orbit, not just a shell. ringLevels=1 puts every particle on the
+    // SAME radius — a single hollow sphere surface; several levels stack
+    // into a denser, more solid-looking ball.
     const radius = max(p0.length(), 0.001);
     const radialDir = p0.div(radius);
     const ringLevel = hash(i.add(uint(97))).mul(params.ringLevels).floor().add(1.0);
     const targetRadius = ringLevel.mul(params.ringSpacing);
-    force.addAssign(radialDir.mul(targetRadius.sub(radius)).mul(params.ring).mul(2.5));
     const tangent = vec3(0.0, 0.0, 1.0).cross(radialDir);
-    force.addAssign(tangent.mul(params.ring).mul(3.0));
+    const ringForce = radialDir.mul(targetRadius.sub(radius)).mul(params.ring).mul(2.5)
+      .add(tangent.mul(params.ring).mul(3.0));
+    force.addAssign(select(isLoopParticle, vec3(0.0), ringForce));
 
     // 5) BAT FORMATION: converge on the assigned silhouette point.
     force.addAssign(target.sub(p0).mul(params.bat).mul(4.0));
 
-    // 6) DAMPING (friction): F = -c v
+    // 6) MAGNETAR LOOPS (loop particles only): each particle is assigned to
+    // one of `magnetarLoops` great-circle "field line" planes fanned around
+    // the vertical axis, and chases a point orbiting that circle. Combined
+    // with a high trail value this paints the moving point into a glowing
+    // arc, like a dipole field line, without any literal line geometry.
+    const loopIndex = hash(i.add(uint(702))).mul(params.magnetarLoops).floor();
+    const loopTheta = loopIndex.div(params.magnetarLoops).mul(PI);
+    const loopPhase = hash(i.add(uint(703))).mul(6.28318);
+    const loopPhi = time.mul(params.magnetarSpeed).add(loopPhase);
+    const loopTarget = vec3(
+      cos(loopPhi).mul(cos(loopTheta)),
+      sin(loopPhi),
+      cos(loopPhi).mul(sin(loopTheta))
+    ).mul(params.magnetarRadius);
+    const magnetarForce = loopTarget.sub(p0).mul(params.magnetar);
+    force.addAssign(select(isLoopParticle, magnetarForce, vec3(0.0)));
+
+    // 7) INFINITY CURVE ("banco" swimming a figure-8/lemniscate path):
+    // each particle chases a point advancing along the curve, offset by
+    // its own phase so the school spreads continuously around the loop.
+    const curvePhase = hash(i.add(uint(881))).mul(6.28318);
+    const curveT = time.mul(params.curveSpeed).add(curvePhase);
+    const curveTarget = vec3(sin(curveT), sin(curveT).mul(cos(curveT)), 0.0).mul(params.curveScale);
+    force.addAssign(curveTarget.sub(p0).mul(params.curve));
+
+    // 8) DAMPING (friction): F = -c v
     force.addAssign(v0.mul(params.damping).mul(-1.0));
 
-    // 7) IMPULSE: manual outward "hit", set from JS on keydown and
+    // 9) IMPULSE: manual outward "hit", set from JS on keydown and
     // decayed from JS every frame afterward.
     const impulseDir = normalize(p0.sub(params.attractor).add(vec3(0.0001, 0.0, 0.0)));
     force.addAssign(impulseDir.mul(params.impulse).mul(10.0));

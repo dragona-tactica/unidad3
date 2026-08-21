@@ -33,6 +33,24 @@ export function createParameters() {
     trail: uniform(boot.trail),
     opacity: uniform(1.0),
 
+    // MAGNETAR (moment 1): a fraction of particles (magnetarRatio) leave
+    // the turbulent core and trace looping "field line" arcs instead.
+    // magnetarRatio/magnetar are per-moment (0 everywhere except moment 1);
+    // the loop's own geometry (radius/speed/count) rarely needs to change
+    // per moment, so it's just a shared, live-tunable shape.
+    magnetar: uniform(boot.magnetar),
+    magnetarRatio: uniform(boot.magnetarRatio),
+    magnetarRadius: uniform(2.5),
+    magnetarSpeed: uniform(1.0),
+    magnetarLoops: uniform(7),
+
+    // INFINITY CURVE (drop): a school of particles chasing a point that
+    // travels a figure-8. Same pattern — curve/strength is per-moment,
+    // the curve's own shape is a shared, live-tunable constant.
+    curve: uniform(boot.curve),
+    curveScale: uniform(3.0),
+    curveSpeed: uniform(1.2),
+
     // Per-moment color gradient (cold -> mid -> hot, driven by speed).
     colorCold: uniform(new THREE.Color(boot.colorCold)),
     colorMid: uniform(new THREE.Color(boot.colorMid)),
